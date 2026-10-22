@@ -24,7 +24,7 @@ app = FaceAnalysis(
     name="buffalo_l",
     providers=["CPUExecutionProvider"],
 )
-app.prepare(ctx_id=0, det_size=(640, 640))
+app.prepare(ctx_id=0, det_size=(320, 320))
 
 
 def normalize_embedding(embedding):
