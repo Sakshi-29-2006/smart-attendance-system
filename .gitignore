@@ -1,0 +1,25 @@
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.env
+
+# Student data and face images
+dataset/
+backend/models/*.pkl
+backend/models/*.pickle
+backend/student_details.json
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Local logs
+*.log
+
+# Local biometric migration backups
+backend/models/
+*.migration-backup

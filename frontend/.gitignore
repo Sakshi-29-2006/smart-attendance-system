@@ -1,0 +1,57 @@
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Student data, datasets, uploads, and generated records
+dataset/
+backend/temp/
+backend/uploads/
+backend/dataset/
+backend/models/
+backend/student_details.json
+backend/*attendance*.json
+backend/*student*.json
+backend/*embedding*.json
+backend/*face*.json
+backend/*attendance*.csv
+backend/*attendance*.xlsx
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+
+# Generated reports and logs
+*.log
+*.pdf
+
+# Node.js dependencies and generated builds
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Local tooling and editor files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
