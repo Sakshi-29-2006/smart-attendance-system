@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
-const API_BASE = "http://localhost:5000/api/students";
+const API_BASE = `${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/students`;
 
 const POSES = [
   {
