@@ -1,30 +1,25 @@
 
 import os
 import re
-import json
 import uuid
 import tempfile
-import threading
 import traceback
 
 from flask import Blueprint, request, jsonify, g
 
 from auth_utils import require_auth, require_teacher
-from config import REGISTERED_DATASET
 from supabase_client import supabase
 
+
 from services.face_service import (
+    DATABASE_LOCK,
     generate_embedding,
     load_database,
     save_database,
 )
 
-student_bp = Blueprint("student", __name__)
 
-STUDENT_DETAILS_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(REGISTERED_DATASET)),
-    "student_details.json",
-)
+student_bp = Blueprint("student", __name__)
 
 REQUIRED_POSES = [
     ("front", "front_photo"),
@@ -46,7 +41,7 @@ LEGACY_POSES = [
     ("right", "right_photo"),
 ]
 
-DATABASE_LOCK = threading.Lock()
+
 
 
 def uploaded_file(field):
@@ -55,49 +50,15 @@ def uploaded_file(field):
     return photo if photo and photo.filename else None
 
 
-def load_student_details():
-    """Load face-registration details from JSON."""
-    if not os.path.exists(STUDENT_DETAILS_FILE):
-        return {}
-
-    try:
-        with open(STUDENT_DETAILS_FILE, "r", encoding="utf-8") as file:
-            details = json.load(file)
-
-        return details if isinstance(details, dict) else {}
-
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def save_student_details(details):
-    """Atomically save student face-registration details."""
-    directory = os.path.dirname(STUDENT_DETAILS_FILE)
-
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-
-    temp_path = STUDENT_DETAILS_FILE + ".tmp"
-
-    try:
-        with open(temp_path, "w", encoding="utf-8") as file:
-            json.dump(details, file, indent=4, ensure_ascii=False)
-
-        os.replace(temp_path, STUDENT_DETAILS_FILE)
-
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
-
 def validate_prn(prn):
+    """Validate a 12-digit student PRN."""
     return isinstance(prn, str) and bool(
         re.fullmatch(r"[0-9]{12}", prn)
     )
 
 
 def get_authenticated_student():
-    """Retrieve the canonical student profile for the verified token PRN."""
+    """Retrieve the canonical student profile from Supabase."""
     prn = g.student_prn
 
     result = (
@@ -150,18 +111,17 @@ def get_photos_from_request():
 
 def create_embedding_records(prn, photos):
     """
-    Generate embeddings from temporary image files.
+    Generate face embeddings using temporary image files.
 
-    Uploaded registration photos are not retained in REGISTERED_DATASET.
-    Temporary files are removed after processing, including on errors.
+    Uploaded images are not permanently stored by this function.
+    Temporary files are deleted after processing.
     """
     new_records = []
 
-    # Use the operating system's temporary directory, not the permanent
-    # registered-photo dataset.
-    with tempfile.TemporaryDirectory(prefix="face_registration_") as temp_dir:
+    with tempfile.TemporaryDirectory(
+        prefix="face_registration_"
+    ) as temp_dir:
         for angle, field, photo in photos:
-            # Preserve a useful filename in the embedding record.
             filename = f"{angle}_{uuid.uuid4().hex}.jpg"
             image_path = os.path.join(temp_dir, filename)
 
@@ -181,9 +141,6 @@ def create_embedding_records(prn, photos):
                 })
 
             finally:
-                # Remove the temporary image as soon as this photo has
-                # been processed. TemporaryDirectory also cleans up the
-                # directory if processing fails.
                 if os.path.isfile(image_path):
                     os.remove(image_path)
 
@@ -227,9 +184,10 @@ def register_student():
 
         with DATABASE_LOCK:
             database = validate_database()
-            student_details = load_student_details()
 
-            if prn in database or prn in student_details:
+            # The embedding database is the source of truth for
+            # whether face registration already exists.
+            if prn in database:
                 return jsonify({
                     "error": (
                         "Face registration already exists for this account. "
@@ -245,23 +203,7 @@ def register_student():
                 }), 400
 
             database[prn] = new_records
-
-            # Save encrypted embeddings before updating student details.
             save_database(database)
-
-            student_details[prn] = {
-                "name": student_name,
-                "branch": branch,
-            }
-
-            try:
-                save_student_details(student_details)
-            except Exception:
-                # Roll back the newly added student in the embedding
-                # database if saving the details fails.
-                database.pop(prn, None)
-                save_database(database)
-                raise
 
         return jsonify({
             "message": "Student registered successfully.",
@@ -307,7 +249,6 @@ def update_student_faces():
 
         with DATABASE_LOCK:
             database = validate_database()
-            student_details = load_student_details()
 
             if prn not in database:
                 return jsonify({
@@ -323,14 +264,6 @@ def update_student_faces():
                 return jsonify({
                     "error": "Existing face records have an invalid format."
                 }), 500
-
-            if prn not in student_details:
-                return jsonify({
-                    "error": (
-                        "Student face details are missing. "
-                        "The record needs to be repaired first."
-                    )
-                }), 409
 
             new_records = create_embedding_records(prn, photos)
 
@@ -356,35 +289,54 @@ def update_student_faces():
         traceback.print_exc()
 
         return jsonify({
-            "error": "Face registration update failed because of a server error."
+            "error": (
+                "Face registration update failed because of a server error."
+            )
         }), 500
 
 
 @student_bp.route("/", methods=["GET"])
 @require_teacher
 def get_students():
-    """Return registered students to an authenticated teacher."""
+    """Return registered students using profiles stored in Supabase."""
     try:
         database = validate_database()
-    except (FileNotFoundError, ValueError):
+
+        registered_prns = list(database.keys())
+
+        if not registered_prns:
+            return jsonify({"students": []}), 200
+
+        # Fetch student details from Supabase rather than a local JSON file.
+        result = (
+            supabase.table("students")
+            .select("prn, full_name, branch")
+            .in_("prn", registered_prns)
+            .execute()
+        )
+
+        profiles = {
+            student["prn"]: student
+            for student in (result.data or [])
+        }
+
+        students = []
+
+        for prn in registered_prns:
+            profile = profiles.get(prn, {})
+
+            students.append({
+                "id": prn,
+                "prn": prn,
+                "name": profile.get("full_name") or "N/A",
+                "branch": profile.get("branch") or "N/A",
+            })
+
+        return jsonify({"students": students}), 200
+
+    except Exception:
+        traceback.print_exc()
+
         return jsonify({
             "error": "Unable to load registered students."
         }), 500
-
-    student_details = load_student_details()
-    students = []
-
-    for prn in database:
-        details = student_details.get(prn, {})
-
-        if not isinstance(details, dict):
-            details = {}
-
-        students.append({
-            "id": prn,
-            "prn": prn,
-            "name": details.get("name") or "N/A",
-            "branch": details.get("branch") or "N/A",
-        })
-
-    return jsonify({"students": students}), 200
