@@ -293,6 +293,78 @@ def update_session_record(session_id):
         )
 
 
+
+@attendance_bp.route(
+    "/sessions/<session_id>/finalize",
+    methods=["POST"]
+)
+@require_teacher
+def finalize_session(session_id):
+    """Save missing students as absent and finalize the session."""
+    try:
+        # Validate session ID format.
+        try:
+            session_uuid = UUID(session_id)
+        except (ValueError, TypeError, AttributeError):
+            return error_response("Invalid session ID.", 400)
+
+        # Finalization and absent-record insertion happen atomically
+        # inside the PostgreSQL function.
+        result = supabase.rpc(
+            "finalize_attendance_session",
+            {
+                "p_session_id": str(session_uuid),
+                "p_teacher_id": g.teacher_id,
+            }
+        ).execute()
+
+        data = result.data
+
+        # Supabase may return the JSON result as a dict or a
+        # single-item list, depending on the client/version.
+        if isinstance(data, list) and data:
+            data = data[0]
+
+        if not isinstance(data, dict) or not data.get("success"):
+            return error_response(
+                "Attendance finalization was not confirmed.",
+                500
+            )
+
+        return jsonify({
+            "success": True,
+            "message": "Attendance finalized successfully.",
+            "total_records": data.get("total_records", 0),
+            "newly_marked_absent": data.get(
+                "newly_marked_absent", 0
+            ),
+        }), 200
+
+    except Exception as exc:
+        # Do not return raw database errors to the browser.
+        error_text = str(exc)
+
+        if "SESSION_NOT_FOUND" in error_text:
+            return error_response(
+                "Session not found or you do not have permission.",
+                404
+            )
+
+        if "SESSION_ALREADY_FINALIZED" in error_text:
+            return error_response(
+                "This session has already been finalized.",
+                409
+            )
+
+        app_logger = __import__("logging").getLogger(__name__)
+        app_logger.exception("Attendance finalization failed")
+
+        return error_response(
+            "Could not finalize attendance. No partial changes should have been committed.",
+            500
+        )
+
+
 @attendance_bp.route("/my-attendance", methods=["GET"])
 @require_auth
 def get_my_attendance():

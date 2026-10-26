@@ -259,6 +259,7 @@ function TeacherDashboard({ token }) {
     const [endTime, setEndTime] = useState("10:00");
     const [sessionId, setSessionId] = useState(null);
     const [attendanceSaved, setAttendanceSaved] = useState(false);
+    const [attendanceFinalized, setAttendanceFinalized] = useState(false);
     const [savingStudentIds, setSavingStudentIds] = useState([]);
     const [images, setImages] = useState([]);
     const [students, setStudents] = useState([]);
@@ -266,6 +267,7 @@ function TeacherDashboard({ token }) {
     const [attendance, setAttendance] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
 
     const [cameraOpen, setCameraOpen] = useState(false);
     const [cameraReady, setCameraReady] = useState(false);
@@ -473,7 +475,10 @@ function TeacherDashboard({ token }) {
         setEnlargedPreview(null);
         setSessionId(null);
         setAttendanceSaved(false);
+        setAttendanceFinalized(false);
+        setSavingStudentIds([]);
         setError("");
+        setSuccessMessage("");
     };
 
     const handleClassChange = (event) => {
@@ -1159,6 +1164,8 @@ function TeacherDashboard({ token }) {
         setEnlargedPreview(null);
         setSessionId(null);
         setAttendanceSaved(false);
+        setAttendanceFinalized(false);
+        setSuccessMessage("");
         setLoading(true);
 
         try {
@@ -1360,7 +1367,90 @@ function TeacherDashboard({ token }) {
         }
     };
 
+    const finalizeAttendance = async () => {
+        if (!sessionId) {
+            setError("No attendance session is available to finalize.");
+            return;
+        }
+
+        if (!token) {
+            setError("Teacher session missing. Please log in again.");
+            return;
+        }
+
+        if (attendance.length === 0) {
+            setError("Run recognition and review the attendance list before finalizing.");
+            return;
+        }
+
+        if (attendanceFinalized) {
+            setError("This attendance session has already been finalized.");
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Finalize attendance for ${attendance.length} registered students?\n\n` +
+            "Students without a saved record will be marked Absent. Existing statuses will be preserved. You cannot edit this session afterward."
+        );
+
+        if (!confirmed) return;
+
+        setError("");
+        setSuccessMessage("");
+        setLoading(true);
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/attendance/sessions/${encodeURIComponent(sessionId)}/finalize`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json().catch(() => null);
+
+            if (!response.ok || data?.success !== true) {
+                throw new Error(
+                    data?.message ||
+                    data?.error ||
+                    "Could not finalize attendance. Please check the backend and try again."
+                );
+            }
+
+            setAttendanceFinalized(true);
+            setAttendanceSaved(true);
+
+            const totalRecords = Number(data.total_records);
+            const expectedStudents = students.length;
+
+            if (Number.isFinite(totalRecords) && totalRecords !== expectedStudents) {
+                setError(
+                    `Attendance was finalized, but the database saved ${totalRecords} records while this dashboard loaded ${expectedStudents} students. Refresh the student list and verify the session records.`
+                );
+            } else {
+                setSuccessMessage(
+                    `Attendance finalized successfully. ${data.newly_marked_absent ?? 0} student(s) were newly marked Absent.`
+                );
+            }
+        } catch (err) {
+            setError(
+                err.message ||
+                "Could not finalize attendance. Please try again."
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const updateAttendanceStatus = async (studentId, status) => {
+        if (attendanceFinalized) {
+            setError("This attendance session has been finalized and cannot be edited.");
+            return;
+        }
+
         if (!sessionId) {
             setError(
                 "No active attendance session. Run recognition first, then edit attendance."
@@ -1376,6 +1466,7 @@ function TeacherDashboard({ token }) {
         const normalizedStudentId = normalizeId(studentId);
 
         setError("");
+        setSuccessMessage("");
 
         setSavingStudentIds((previous) =>
             previous.includes(normalizedStudentId)
@@ -2028,6 +2119,7 @@ function TeacherDashboard({ token }) {
                     onClick={recognizeAttendance}
                     disabled={
                         loading ||
+                        attendanceFinalized ||
                         !className ||
                         !date ||
                         (images.length === 0 && !videoFile)
@@ -2049,6 +2141,12 @@ function TeacherDashboard({ token }) {
                 {error && (
                     <p className="error" role="alert">
                         {error}
+                    </p>
+                )}
+
+                {successMessage && (
+                    <p role="status" style={{ color: "#15803d" }}>
+                        {successMessage}
                     </p>
                 )}
             </div>
@@ -2232,7 +2330,29 @@ function TeacherDashboard({ token }) {
                         </div>
                     </div>
 
+                    {attendanceFinalized && (
+                        <p role="status">
+                            Attendance is finalized. Editing is disabled for this session.
+                        </p>
+                    )}
+
                     <div className="attendance-export-buttons">
+                        {!attendanceFinalized && (
+                            <button
+                                type="button"
+                                className="recognize-button"
+                                onClick={finalizeAttendance}
+                                disabled={
+                                    loading ||
+                                    !sessionId ||
+                                    attendance.length === 0 ||
+                                    savingStudentIds.length > 0
+                                }
+                            >
+                                {loading ? "Processing..." : "Finalize Attendance"}
+                            </button>
+                        )}
+
                         <button
                             type="button"
                             className="recognize-button"
@@ -2278,6 +2398,7 @@ function TeacherDashboard({ token }) {
                                             }
                                             disabled={
                                                 loading ||
+                                                attendanceFinalized ||
                                                 savingStudentIds.includes(
                                                     normalizeId(
                                                         student.student_id

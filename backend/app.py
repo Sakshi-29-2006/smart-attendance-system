@@ -22,7 +22,10 @@ CORS(
     app,
     resources={
         r"/api/*": {
-            "origins": ["http://localhost:5173"]
+            "origins": [
+                "http://localhost:5173",
+                "https://smart-attendance-system-3of.pages.dev"
+            ]
         }
     }
 )

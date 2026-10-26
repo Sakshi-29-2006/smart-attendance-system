@@ -3731,3 +3731,161 @@
     font-size: 13px;
   }
 }
+
+
+/* ==========================================
+   MOBILE CAMERA DIALOG SCROLL FIX
+   CSS only — preserves camera/recording logic
+   ========================================== */
+
+.attendance-container .teacher-camera-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+}
+
+.attendance-container .teacher-camera-dialog {
+    width: 100%;
+    max-width: 760px;
+
+    /* Keep the dialog within the visible mobile viewport */
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+
+    /* Scroll inside the dialog when its contents are too tall */
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+
+    flex-shrink: 0;
+    margin: auto 0;
+    box-sizing: border-box;
+}
+
+@media (max-width: 600px) {
+    .attendance-container .teacher-camera-overlay {
+        padding: 8px;
+        padding-top: max(8px, env(safe-area-inset-top));
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+
+    .attendance-container .teacher-camera-dialog {
+        max-height: calc(100vh - 16px);
+        max-height: calc(100dvh - 16px);
+        padding: 14px;
+        border-radius: 12px;
+    }
+
+    .attendance-container .teacher-camera-video video {
+        max-height: 35dvh;
+        max-height: 35vh;
+        object-fit: contain;
+    }
+
+    .attendance-container .teacher-camera-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .attendance-container .teacher-camera-actions button {
+        width: 100%;
+        min-height: 44px;
+        flex-shrink: 0;
+    }
+}
+
+
+/* ==========================================
+   STUDENT CAMERA DIALOG — MOBILE SCROLL FIX
+   CSS only; no changes to capture logic
+   ========================================== */
+
+.guided-registration .camera-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+
+    padding: 8px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+}
+
+.guided-registration .camera-card-large {
+    width: 100%;
+    max-width: 600px;
+
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+
+    flex-shrink: 0;
+    margin: auto 0;
+    box-sizing: border-box;
+}
+
+.guided-registration .guided-camera-frame {
+    max-width: 100%;
+}
+
+.guided-registration .camera-card-large .camera-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.guided-registration .camera-card-large .camera-actions button {
+    min-height: 44px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .guided-registration .camera-card-large {
+        padding: 14px;
+        border-radius: 12px;
+    }
+
+    .guided-registration .guided-camera-frame {
+        aspect-ratio: 3 / 4;
+        max-height: 38vh;
+        max-height: 38dvh;
+    }
+
+    .guided-registration .camera-card-large .camera-actions {
+        flex-direction: column;
+    }
+
+    .guided-registration .camera-card-large .camera-actions button {
+        width: 100%;
+    }
+}
+
